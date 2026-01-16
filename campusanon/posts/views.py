@@ -4,8 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from communities.models import Community
-from .models import Post, Comment
+from .models import Post, Comment, PostLike
 from .utils import generate_alias
+
+
 
 
 # -------------------------------
@@ -72,14 +74,16 @@ class CommunityFeedView(APIView):
         )
 
         return Response([
-            {
-                "id": str(p.id),
-                "alias": p.alias,
-                "content": p.content,
-                "created_at": p.created_at,
-            }
-            for p in posts
-        ])
+        {
+            "id": str(p.id),
+            "alias": p.alias,
+            "content": p.content,
+            "created_at": p.created_at,
+            "likes_count": p.likes.count(),
+        }
+        for p in posts
+    ])
+
 
 
 # -------------------------------
@@ -178,3 +182,34 @@ class PostCommentsView(APIView):
             }
             for c in comments
         ])
+
+
+class ToggleLikeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id):
+        try:
+            post = Post.objects.get(id=post_id)
+        except Post.DoesNotExist:
+            return Response(
+                {"error": "Post not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        like, created = PostLike.objects.get_or_create(
+            user=request.user,
+            post=post
+        )
+
+        if not created:
+            # already liked → unlike
+            like.delete()
+            return Response({
+                "liked": False,
+                "likes_count": post.likes.count()
+            })
+
+        return Response({
+            "liked": True,
+            "likes_count": post.likes.count()
+        })

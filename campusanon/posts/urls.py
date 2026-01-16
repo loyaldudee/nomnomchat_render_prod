@@ -5,6 +5,7 @@ from .views import (
     DeletePostView,
     CreateCommentView,
     PostCommentsView,
+    ToggleLikeView
 )
 
 urlpatterns = [
@@ -16,4 +17,6 @@ urlpatterns = [
     # Comments
     path("comment/<uuid:post_id>/", CreateCommentView.as_view(), name="create-comment"),
     path("comment/<uuid:post_id>/list/", PostCommentsView.as_view(), name="list-comments"),
+
+    path("like/<uuid:post_id>/", ToggleLikeView.as_view()),
 ]
