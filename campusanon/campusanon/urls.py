@@ -27,5 +27,6 @@ from django.urls import path, include
 urlpatterns = [
     path("auth/", include("accounts.urls")),
     path("communities/", include("communities.urls")),
-
+    path("posts/", include("posts.urls")),
 ]
+
