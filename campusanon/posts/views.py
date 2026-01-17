@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 
 from communities.models import Community
 from accounts.models import User
@@ -17,6 +19,8 @@ from .permissions import IsAdminUser
 
 REPORT_THRESHOLD = 3
 COMMENT_REPORT_THRESHOLD = 3
+PAGE_SIZE = 20
+COMMENT_PAGE_SIZE = 20  # Added for comment pagination
 
 
 # -------------------------------
@@ -95,13 +99,24 @@ class CommunityFeedView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        posts = (
-            Post.objects
-            .filter(community_id=community_id, is_hidden=False)
-            .order_by("-created_at")[:50]
+        cursor = request.query_params.get("cursor")
+
+        posts = Post.objects.filter(
+            community_id=community_id,
+            is_hidden=False
         )
 
-        return Response([
+        if cursor:
+            cursor_dt = parse_datetime(cursor)
+            if cursor_dt:
+                posts = posts.filter(created_at__lt=cursor_dt)
+
+        # ✅ FIX: Convert to list to support negative indexing
+        posts = list(
+            posts.order_by("-created_at")[:PAGE_SIZE]
+        )
+
+        data = [
             {
                 "id": str(p.id),
                 "alias": p.alias,
@@ -110,7 +125,16 @@ class CommunityFeedView(APIView):
                 "likes_count": p.likes.count(),
             }
             for p in posts
-        ])
+        ]
+
+        next_cursor = None
+        if posts:
+            next_cursor = posts[-1].created_at.isoformat()
+
+        return Response({
+            "results": data,
+            "next_cursor": next_cursor
+        })
 
 
 # -------------------------------
@@ -217,10 +241,23 @@ class PostCommentsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        cursor = request.query_params.get("cursor")
+
         # Filter out hidden comments
         comments = post.comments.filter(is_hidden=False)
 
-        return Response([
+        # Cursor pagination logic for comments (ascending order)
+        if cursor:
+            cursor_dt = parse_datetime(cursor)
+            if cursor_dt:
+                comments = comments.filter(created_at__gt=cursor_dt)
+
+        # ✅ FIX: Convert to list for safe indexing
+        comments = list(
+            comments.order_by("created_at")[:COMMENT_PAGE_SIZE]
+        )
+
+        data = [
             {
                 "id": str(c.id),
                 "alias": c.alias,
@@ -228,7 +265,16 @@ class PostCommentsView(APIView):
                 "created_at": c.created_at,
             }
             for c in comments
-        ])
+        ]
+
+        next_cursor = None
+        if comments:
+            next_cursor = comments[-1].created_at.isoformat()
+
+        return Response({
+            "results": data,
+            "next_cursor": next_cursor
+        })
 
 
 class ToggleLikeView(APIView):
