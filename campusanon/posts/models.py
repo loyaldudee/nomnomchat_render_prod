@@ -38,6 +38,8 @@ class Comment(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    is_hidden = models.BooleanField(default=False)
+
     class Meta:
         ordering = ["created_at"]
 
@@ -62,7 +64,6 @@ class PostReport(models.Model):
     reporter = models.ForeignKey(User, on_delete=models.CASCADE)
     reason = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
-    is_hidden = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("post", "reporter")
@@ -73,7 +74,6 @@ class CommentReport(models.Model):
     reporter = models.ForeignKey(User, on_delete=models.CASCADE)
     reason = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
-    is_hidden = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("comment", "reporter")

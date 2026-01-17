@@ -6,9 +6,11 @@ from rest_framework import status
 from communities.models import Community
 from .models import Post, Comment, PostLike, PostReport
 from .utils import generate_alias
+from .models import CommentReport
 
 
 REPORT_THRESHOLD = 3
+COMMENT_REPORT_THRESHOLD = 3
 
 
 # -------------------------------
@@ -173,7 +175,8 @@ class PostCommentsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        comments = post.comments.all()
+        comments = post.comments.filter(is_hidden=False)
+
 
         return Response([
             {
@@ -259,4 +262,49 @@ class ReportPostView(APIView):
             "message": "Reported successfully",
             "reports_count": post.reports.count(),
             "hidden": post.is_hidden
+        })
+
+
+
+class ReportCommentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, comment_id):
+        reason = request.data.get("reason", "unspecified")
+
+        try:
+            comment = Comment.objects.get(id=comment_id)
+        except Comment.DoesNotExist:
+            return Response(
+                {"error": "Comment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if comment.is_hidden:
+            return Response(
+                {"message": "Comment already hidden"},
+                status=status.HTTP_200_OK
+            )
+
+        report, created = CommentReport.objects.get_or_create(
+            comment=comment,
+            reporter=request.user,
+            defaults={"reason": reason}
+        )
+
+        if not created:
+            return Response(
+                {"message": "Already reported"},
+                status=status.HTTP_200_OK
+            )
+
+        # 🔒 Auto-hide after threshold
+        if comment.reports.count() >= COMMENT_REPORT_THRESHOLD:
+            comment.is_hidden = True
+            comment.save()
+
+        return Response({
+            "message": "Reported successfully",
+            "reports_count": comment.reports.count(),
+            "hidden": comment.is_hidden
         })
