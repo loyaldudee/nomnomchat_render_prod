@@ -191,16 +191,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Force Django to send emails via Gmail SMTP
 import os
 
-# 📧 EMAIL CONFIGURATION (Gmail SMTP)
+# 📧 EMAIL CONFIGURATION (Brevo / Sendinblue)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST = 'smtp-relay.brevo.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
 
-# 🔄 CHANGE: Use Port 465 and SSL for better reliability
-EMAIL_PORT = 465
-EMAIL_USE_TLS = False  # Turn this OFF
-EMAIL_USE_SSL = True   # Turn this ON
-
-# Credentials
+# Credentials from Environment
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
