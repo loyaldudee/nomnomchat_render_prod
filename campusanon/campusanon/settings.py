@@ -188,5 +188,18 @@ LOGGING = {
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Force Django to print emails to the logs (Console)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Force Django to send emails via Gmail SMTP
+import os
+
+# 📧 EMAIL CONFIGURATION (Gmail SMTP)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+# Read secure credentials from Environment Variables
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+
+# Default sender
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
