@@ -68,5 +68,5 @@ npm-debug.log
 # Django
 *.pyc
 local_settings.py
-/staticfiles/  <-- This line prevents it from being committed
-/media/
+campusanon/staticfiles/
+campusanon/media/
