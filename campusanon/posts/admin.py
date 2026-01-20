@@ -4,31 +4,33 @@ from .models import Post, Comment, PostReport, CommentReport, AdminAuditLog, Pos
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    # ✅ Added 'reports_count' to list_display
     list_display = ('alias', 'community', 'is_hidden', 'created_at', 'short_content', 'likes_count', 'reports_count')
     list_filter = ('is_hidden', 'community')
     search_fields = ('content', 'alias')
+    
+    # ✅ 1. ALLOW MANUAL EDITING
+    # This adds a toggle switch directly in the list view
+    list_editable = ('is_hidden',) 
     
     def short_content(self, obj):
         return obj.content[:50]
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        # ✅ Annotate BOTH likes and reports for sorting
+        # ✅ 2. FIX DOUBLE COUNTING
+        # distinct=True prevents the "multiplication" of rows
         return queryset.annotate(
-            total_likes=Count('likes'),
-            total_reports=Count('reports')
+            total_likes=Count('likes', distinct=True),
+            total_reports=Count('reports', distinct=True)
         )
 
     @admin.display(description='Likes', ordering='total_likes')
     def likes_count(self, obj):
         return obj.total_likes
 
-    # ✅ NEW: Column for Reports
     @admin.display(description='Reports', ordering='total_reports')
     def reports_count(self, obj):
         return obj.total_reports
-
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
     # ✅ Added 'reports_count'
