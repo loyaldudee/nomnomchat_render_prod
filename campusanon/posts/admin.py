@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Post, Comment, PostReport, CommentReport, AdminAuditLog
+# ✅ 1. Added PostLike to the imports
+from .models import Post, Comment, PostReport, CommentReport, AdminAuditLog, PostLike
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
@@ -23,3 +24,9 @@ class PostReportAdmin(admin.ModelAdmin):
 class AuditLogAdmin(admin.ModelAdmin):
     list_display = ('admin', 'action', 'target_type', 'reason', 'created_at')
     list_filter = ('action', 'target_type')
+
+# ✅ 2. Added the PostLike registration here
+@admin.register(PostLike)
+class PostLikeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'post', 'created_at')
+    list_filter = ('created_at',)
