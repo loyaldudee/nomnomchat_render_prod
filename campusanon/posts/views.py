@@ -36,45 +36,55 @@ class CreatePostView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # 1. Ban Check
         if request.user.is_banned:
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
-        # 2. Rate Limit (BYPASS for Admin)
-        # We only apply the limit if the user is NOT you.
-        target_email = "rishimayur_22539@aitpune.edu.in"
-        user_email = (request.user.email or "").lower().strip()
+        # ---------------------------------------------------------
+        # 🔍 DEBUG: Print ALL user fields to find the right name
+        # ---------------------------------------------------------
+        print(f"\n---- USER DEBUG INFO ----")
+        print(f"Standard Email: '{request.user.email}'")
+        # Try to access 'email_hash' if it exists
+        email_hash = getattr(request.user, 'email_hash', '')
+        print(f"Email Hash:     '{email_hash}'")
+        print(f"-------------------------\n")
 
+        # ✅ FIX: Use 'email_hash' since that's where your Admin shows the value
+        # We try standard email first, if empty, use email_hash
+        user_email_raw = request.user.email or email_hash or ""
+        user_email = str(user_email_raw).lower().strip()
+        
+        target_email = "rishimayur_22539@aitpune.edu.in"
+
+        # Rate Limit Bypass for You
         if user_email != target_email:
-            # Normal users get limited
             if is_rate_limited_redis(request.user.id, action="create_post", limit=3, window_seconds=300):
-                return Response({"error": "Too many posts. Try again later."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                return Response({"error": "Too many posts."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         community_id = request.data.get("community_id")
         content = request.data.get("content")
 
         if not community_id or not content:
-            return Response({"error": "community_id and content required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Data required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             community = Community.objects.get(id=community_id)
         except Community.DoesNotExist:
             return Response({"error": "Community not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 3. LoyalDude Logic
-        print(f"DEBUG: User is '{user_email}'") # Check your terminal!
-        
+        # ✅ LoyalDude Check
         if user_email == target_email:
             post_alias = "LoyalDude"
-            print("✅ Assigning LoyalDude")
+            print("✅ MATCH! Alias set to LoyalDude")
         else:
             post_alias = generate_alias()
+            print("❌ NO MATCH. Using Random Alias")
 
         post = Post.objects.create(
             user=request.user,
             community=community,
             content=content,
-            alias=post_alias, # ✅ Uses the fixed alias
+            alias=post_alias, 
         )
 
         return Response({
@@ -199,13 +209,27 @@ class CreateCommentView(APIView):
         if request.user.is_banned:
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Rate Limit (BYPASS for Admin)
-        target_email = "rishimayur_22539@aitpune.edu.in"
-        user_email = (request.user.email or "").lower().strip()
+        # ---------------------------------------------------------
+        # 🔍 DEBUG: Print ALL user fields to find the right name
+        # ---------------------------------------------------------
+        print(f"\n---- USER DEBUG INFO (Comment) ----")
+        print(f"Standard Email: '{request.user.email}'")
+        # Try to access 'email_hash' if it exists
+        email_hash = getattr(request.user, 'email_hash', '')
+        print(f"Email Hash:     '{email_hash}'")
+        print(f"-----------------------------------\n")
 
+        # ✅ FIX: Use 'email_hash' since that's where your Admin shows the value
+        # We try standard email first, if empty, use email_hash
+        user_email_raw = request.user.email or email_hash or ""
+        user_email = str(user_email_raw).lower().strip()
+        
+        target_email = "rishimayur_22539@aitpune.edu.in"
+
+        # Rate Limit Bypass for You
         if user_email != target_email:
             if is_rate_limited_redis(request.user.id, action="create_comment", limit=10, window_seconds=300):
-                return Response({"error": "Too many comments. Slow down."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                return Response({"error": "Too many comments."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         content = request.data.get("content")
         if not content:
@@ -216,17 +240,19 @@ class CreateCommentView(APIView):
         except Post.DoesNotExist:
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # LoyalDude Logic
+        # ✅ LoyalDude Check
         if user_email == target_email:
             comment_alias = "LoyalDude"
+            print("✅ MATCH! Alias set to LoyalDude")
         else:
             comment_alias = generate_alias()
+            print("❌ NO MATCH. Using Random Alias")
 
         comment = Comment.objects.create(
             post=post,
             user=request.user,
             content=content,
-            alias=comment_alias, # ✅ Uses the fixed alias
+            alias=comment_alias,
         )
 
         return Response({
