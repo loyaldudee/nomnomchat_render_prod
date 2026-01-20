@@ -645,6 +645,13 @@ class SearchPostsView(APIView):
         if not query:
             return Response([], status=status.HTTP_200_OK)
 
+        # 👇 1. Define the "Is Liked?" Subquery
+        is_liked_by_user = PostLike.objects.filter(
+            post=OuterRef('pk'),
+            user=request.user
+        )
+
+        # 👇 2. Filter & Annotate
         posts = Post.objects.filter(
             content__icontains=query,
             is_hidden=False
@@ -653,15 +660,22 @@ class SearchPostsView(APIView):
         if community_id:
             posts = posts.filter(community_id=community_id)
 
-        posts = posts.order_by("-created_at")[:30]
+        # Add the "intelligence" (Counts + Flags)
+        posts = posts.annotate(
+            total_likes=Count('likes'),
+            is_liked=Exists(is_liked_by_user)
+        ).order_by("-created_at")[:50]  # Limit to 50 results
 
+        # 👇 3. Return rich data
         return Response([
             {
                 "id": str(p.id),
                 "alias": p.alias,
                 "content": p.content,
                 "created_at": p.created_at,
-                "likes_count": p.likes.count(),
+                "likes_count": p.total_likes,
+                "is_liked": p.is_liked,       # ✅ Interactive Heart
+                "is_mine": p.user_id == request.user.id, # ✅ Interactive Delete
                 "community_id": str(p.community_id),
             }
             for p in posts
