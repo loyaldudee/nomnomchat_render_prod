@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
+from django.db.models import Count, Exists, OuterRef
 
 from communities.models import Community
 from accounts.models import User
@@ -106,9 +107,21 @@ class CommunityFeedView(APIView):
 
         cursor = request.query_params.get("cursor")
 
+        # Define a subquery to check if THIS user liked the post
+        is_liked_by_user = PostLike.objects.filter(
+            post=OuterRef('pk'),
+            user=request.user
+        )
+
+        # Annotate the main query
         posts = Post.objects.filter(
             community_id=community_id,
             is_hidden=False
+        ).annotate(
+            # Count likes directly in the database (Faster!)
+            total_likes=Count('likes'),
+            # Returns True/False if the subquery finds a match
+            is_liked=Exists(is_liked_by_user) 
         )
 
         if cursor:
@@ -116,6 +129,7 @@ class CommunityFeedView(APIView):
             if cursor_dt:
                 posts = posts.filter(created_at__lt=cursor_dt)
 
+        # Order by creation (newest first)
         posts = list(
             posts.order_by("-created_at")[:PAGE_SIZE]
         )
@@ -126,7 +140,9 @@ class CommunityFeedView(APIView):
                 "alias": p.alias,
                 "content": p.content,
                 "created_at": p.created_at,
-                "likes_count": p.likes.count(),
+                # Use the annotated fields
+                "likes_count": p.total_likes, 
+                "is_liked": p.is_liked  # This ensures the heart stays red!
             }
             for p in posts
         ]
