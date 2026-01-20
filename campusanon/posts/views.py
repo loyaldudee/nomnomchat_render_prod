@@ -113,6 +113,12 @@ class CommunityFeedView(APIView):
             user=request.user
         )
 
+        # Check if user REPORTED
+        is_reported_by_user = PostReport.objects.filter(
+            post=OuterRef('pk'),
+            reporter=request.user
+        )
+
         # Annotate the main query
         posts = Post.objects.filter(
             community_id=community_id,
@@ -121,7 +127,8 @@ class CommunityFeedView(APIView):
             # Count likes directly in the database (Faster!)
             total_likes=Count('likes'),
             # Returns True/False if the subquery finds a match
-            is_liked=Exists(is_liked_by_user) 
+            is_liked=Exists(is_liked_by_user),
+            is_reported=Exists(is_reported_by_user)
         )
 
         if cursor:
@@ -142,8 +149,8 @@ class CommunityFeedView(APIView):
                 "created_at": p.created_at,
                 "likes_count": p.total_likes, # Uses the annotation we added earlier
                 "is_liked": p.is_liked,       # Uses the annotation we added earlier
-                # ✅ NEW: Check ownership
-                "is_mine": p.user_id == request.user.id 
+                "is_mine": p.user_id == request.user.id,
+                "is_reported": p.is_reported
             }
             for p in posts
         ]
@@ -353,11 +360,18 @@ class GetPostView(APIView):
             user=request.user
         )
 
+        # Report subquery
+        is_reported_by_user = PostReport.objects.filter(
+            post=OuterRef('pk'),
+            reporter=request.user
+        )
+
         try:
             # We use filter() + first() instead of get() to allow annotation
             post = Post.objects.filter(id=post_id).annotate(
                 total_likes=Count('likes'),
-                is_liked=Exists(is_liked_by_user)
+                is_liked=Exists(is_liked_by_user),
+                is_reported=Exists(is_reported_by_user)
             ).first()
             
             if not post:
@@ -372,8 +386,8 @@ class GetPostView(APIView):
             "is_liked": post.is_liked,
             "community_id": str(post.community.id),
             "community_name": post.community.name,
-            # ✅ NEW: Check ownership
-            "is_mine": post.user_id == request.user.id 
+            "is_mine": post.user_id == request.user.id,
+            "is_reported": post.is_reported
         })
 
         except Exception as e:
@@ -651,6 +665,12 @@ class SearchPostsView(APIView):
             user=request.user
         )
 
+        # 👇 1b. Define the "Is Reported?" Subquery
+        is_reported_by_user = PostReport.objects.filter(
+            post=OuterRef('pk'),
+            reporter=request.user
+        )
+
         # 👇 2. Filter & Annotate
         posts = Post.objects.filter(
             content__icontains=query,
@@ -663,7 +683,8 @@ class SearchPostsView(APIView):
         # Add the "intelligence" (Counts + Flags)
         posts = posts.annotate(
             total_likes=Count('likes'),
-            is_liked=Exists(is_liked_by_user)
+            is_liked=Exists(is_liked_by_user),
+            is_reported=Exists(is_reported_by_user)
         ).order_by("-created_at")[:50]  # Limit to 50 results
 
         # 👇 3. Return rich data
@@ -676,6 +697,7 @@ class SearchPostsView(APIView):
                 "likes_count": p.total_likes,
                 "is_liked": p.is_liked,       # ✅ Interactive Heart
                 "is_mine": p.user_id == request.user.id, # ✅ Interactive Delete
+                "is_reported": p.is_reported,
                 "community_id": str(p.community_id),
             }
             for p in posts
