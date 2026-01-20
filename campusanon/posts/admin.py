@@ -1,15 +1,26 @@
 from django.contrib import admin
-# ✅ 1. Added PostLike to the imports
+from django.db.models import Count # 👈 1. Import Count
 from .models import Post, Comment, PostReport, CommentReport, AdminAuditLog, PostLike
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ('alias', 'community', 'is_hidden', 'created_at', 'short_content')
+    # 👈 2. Added 'likes_count' to the display list
+    list_display = ('alias', 'community', 'is_hidden', 'created_at', 'short_content', 'likes_count')
     list_filter = ('is_hidden', 'community')
     search_fields = ('content', 'alias')
     
     def short_content(self, obj):
         return obj.content[:50]
+
+    # 👈 3. Optimized Query (Allows sorting by likes!)
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        return queryset.annotate(total_likes=Count('likes'))
+
+    # 👈 4. Define the column
+    @admin.display(description='Likes', ordering='total_likes')
+    def likes_count(self, obj):
+        return obj.total_likes
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
@@ -25,7 +36,6 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ('admin', 'action', 'target_type', 'reason', 'created_at')
     list_filter = ('action', 'target_type')
 
-# ✅ 2. Added the PostLike registration here
 @admin.register(PostLike)
 class PostLikeAdmin(admin.ModelAdmin):
     list_display = ('user', 'post', 'created_at')
