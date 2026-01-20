@@ -40,24 +40,13 @@ class CreatePostView(APIView):
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
         # ---------------------------------------------------------
-        # 🔍 DEBUG: Print ALL user fields to find the right name
+        # 1. ROBUST RATE LIMIT BYPASS
         # ---------------------------------------------------------
-        print(f"\n---- USER DEBUG INFO ----")
-        print(f"Standard Email: '{request.user.email}'")
-        # Try to access 'email_hash' if it exists
-        email_hash = getattr(request.user, 'email_hash', '')
-        print(f"Email Hash:     '{email_hash}'")
-        print(f"-------------------------\n")
-
-        # ✅ FIX: Use 'email_hash' since that's where your Admin shows the value
-        # We try standard email first, if empty, use email_hash
-        user_email_raw = request.user.email or email_hash or ""
-        user_email = str(user_email_raw).lower().strip()
+        # We check is_staff or is_superuser. This never fails for Admins.
+        is_admin = request.user.is_staff or request.user.is_superuser
         
-        target_email = "rishimayur_22539@aitpune.edu.in"
-
-        # Rate Limit Bypass for You
-        if user_email != target_email:
+        if not is_admin:
+            # Only check rate limit if NOT an admin
             if is_rate_limited_redis(request.user.id, action="create_post", limit=3, window_seconds=300):
                 return Response({"error": "Too many posts."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
@@ -72,7 +61,21 @@ class CreatePostView(APIView):
         except Community.DoesNotExist:
             return Response({"error": "Community not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # ✅ LoyalDude Check
+        # ---------------------------------------------------------
+        # 2. LOYALDUDE LOGIC (Using email_hash)
+        # ---------------------------------------------------------
+        target_email = "rishimayur_22539@aitpune.edu.in"
+        
+        # Try to get email from 'email_hash' (custom field) or 'email' (standard)
+        # We use getattr to avoid crashing if the field doesn't exist
+        user_email_hash = getattr(request.user, 'email_hash', '')
+        user_standard_email = getattr(request.user, 'email', '')
+        
+        # Pick the one that has text
+        user_email = str(user_email_hash or user_standard_email or "").lower().strip()
+
+        print(f"DEBUG: Checking User '{user_email}' against Target '{target_email}'")
+
         if user_email == target_email:
             post_alias = "LoyalDude"
             print("✅ MATCH! Alias set to LoyalDude")
@@ -210,24 +213,13 @@ class CreateCommentView(APIView):
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
         # ---------------------------------------------------------
-        # 🔍 DEBUG: Print ALL user fields to find the right name
+        # 1. ROBUST RATE LIMIT BYPASS
         # ---------------------------------------------------------
-        print(f"\n---- USER DEBUG INFO (Comment) ----")
-        print(f"Standard Email: '{request.user.email}'")
-        # Try to access 'email_hash' if it exists
-        email_hash = getattr(request.user, 'email_hash', '')
-        print(f"Email Hash:     '{email_hash}'")
-        print(f"-----------------------------------\n")
-
-        # ✅ FIX: Use 'email_hash' since that's where your Admin shows the value
-        # We try standard email first, if empty, use email_hash
-        user_email_raw = request.user.email or email_hash or ""
-        user_email = str(user_email_raw).lower().strip()
+        # We check is_staff or is_superuser. This never fails for Admins.
+        is_admin = request.user.is_staff or request.user.is_superuser
         
-        target_email = "rishimayur_22539@aitpune.edu.in"
-
-        # Rate Limit Bypass for You
-        if user_email != target_email:
+        if not is_admin:
+            # Only check rate limit if NOT an admin
             if is_rate_limited_redis(request.user.id, action="create_comment", limit=10, window_seconds=300):
                 return Response({"error": "Too many comments."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
@@ -240,7 +232,21 @@ class CreateCommentView(APIView):
         except Post.DoesNotExist:
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # ✅ LoyalDude Check
+        # ---------------------------------------------------------
+        # 2. LOYALDUDE LOGIC (Using email_hash)
+        # ---------------------------------------------------------
+        target_email = "rishimayur_22539@aitpune.edu.in"
+        
+        # Try to get email from 'email_hash' (custom field) or 'email' (standard)
+        # We use getattr to avoid crashing if the field doesn't exist
+        user_email_hash = getattr(request.user, 'email_hash', '')
+        user_standard_email = getattr(request.user, 'email', '')
+        
+        # Pick the one that has text
+        user_email = str(user_email_hash or user_standard_email or "").lower().strip()
+
+        print(f"DEBUG: Checking User '{user_email}' against Target '{target_email}'")
+
         if user_email == target_email:
             comment_alias = "LoyalDude"
             print("✅ MATCH! Alias set to LoyalDude")
