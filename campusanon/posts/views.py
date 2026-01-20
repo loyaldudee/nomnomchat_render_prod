@@ -43,7 +43,7 @@ class CreatePostView(APIView):
         # 2. Rate Limit (BYPASS for Admin)
         # We only apply the limit if the user is NOT you.
         target_email = "rishimayur_22539@aitpune.edu.in"
-        user_email = request.user.email.lower().strip()
+        user_email = (request.user.email or "").lower().strip()
 
         if user_email != target_email:
             # Normal users get limited
@@ -201,7 +201,7 @@ class CreateCommentView(APIView):
 
         # Rate Limit (BYPASS for Admin)
         target_email = "rishimayur_22539@aitpune.edu.in"
-        user_email = request.user.email.lower().strip()
+        user_email = (request.user.email or "").lower().strip()
 
         if user_email != target_email:
             if is_rate_limited_redis(request.user.id, action="create_comment", limit=10, window_seconds=300):

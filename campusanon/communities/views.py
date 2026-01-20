@@ -12,7 +12,7 @@ class MyCommunitiesView(APIView):
         user = request.user
         
         # ✅ HARDCODED: If it is YOU, return ALL communities
-        user_email = request.user.email.lower().strip()
+        user_email = (request.user.email or "").lower().strip()
         target_email = "rishimayur_22539@aitpune.edu.in"
 
         if user_email == target_email:
