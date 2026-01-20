@@ -11,16 +11,19 @@ class MyCommunitiesView(APIView):
     def get(self, request):
         user = request.user
         
-        # ✅ HARDCODED: If it is YOU, return ALL communities
-        email_hash = getattr(request.user, 'email_hash', '')
-        user_email_raw = request.user.email or email_hash or ""
-        user_email = str(user_email_raw).lower().strip()
-        target_email = "rishimayur_22539@aitpune.edu.in"
-
-        if user_email == target_email:
-            # Admin sees EVERYTHING
+        # ---------------------------------------------------------
+        # 👑 GOD MODE CHECK (Staff/Superuser)
+        # ---------------------------------------------------------
+        # If you are Staff or Superuser, you bypass all filters and see EVERYTHING.
+        # This matches the logic we set up in CreatePostView.
+        if user.is_staff or user.is_superuser:
+            print(f"👑 ADMIN DETECTED ({user.username}): Showing ALL communities")
             all_communities = Community.objects.all()
         else:
+            # -----------------------------------------------------
+            # NORMAL STUDENT LOGIC
+            # -----------------------------------------------------
+            
             # 1. AUTOMATIC: Get communities matching User's Branch, Year, or Global
             # Logic: (Global) OR (Matches Branch) OR (Matches Year)
             auto_communities = Community.objects.filter(
