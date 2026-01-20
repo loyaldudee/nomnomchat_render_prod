@@ -140,9 +140,10 @@ class CommunityFeedView(APIView):
                 "alias": p.alias,
                 "content": p.content,
                 "created_at": p.created_at,
-                # Use the annotated fields
-                "likes_count": p.total_likes, 
-                "is_liked": p.is_liked  # This ensures the heart stays red!
+                "likes_count": p.total_likes, # Uses the annotation we added earlier
+                "is_liked": p.is_liked,       # Uses the annotation we added earlier
+                # ✅ NEW: Check ownership
+                "is_mine": p.user_id == request.user.id 
             }
             for p in posts
         ]
@@ -279,6 +280,8 @@ class PostCommentsView(APIView):
                 "alias": c.alias,
                 "content": c.content,
                 "created_at": c.created_at,
+                # ✅ NEW: Check ownership
+                "is_mine": c.user_id == request.user.id 
             }
             for c in comments
         ]
@@ -361,15 +364,17 @@ class GetPostView(APIView):
                 return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
             return Response({
-                "id": str(post.id),
-                "alias": post.alias,
-                "content": post.content,
-                "created_at": post.created_at,
-                "likes_count": post.total_likes,
-                "is_liked": post.is_liked,
-                "community_id": str(post.community.id),
-                "community_name": post.community.name 
-            })
+            "id": str(post.id),
+            "alias": post.alias,
+            "content": post.content,
+            "created_at": post.created_at,
+            "likes_count": post.total_likes,
+            "is_liked": post.is_liked,
+            "community_id": str(post.community.id),
+            "community_name": post.community.name,
+            # ✅ NEW: Check ownership
+            "is_mine": post.user_id == request.user.id 
+        })
 
         except Exception as e:
             print(e)
