@@ -40,13 +40,27 @@ class CreatePostView(APIView):
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
         # ---------------------------------------------------------
-        # 1. ROBUST RATE LIMIT BYPASS
+        # 👑 THE "GOD MODE" CHECK
         # ---------------------------------------------------------
-        # We check is_staff or is_superuser. This never fails for Admins.
-        is_admin = request.user.is_staff or request.user.is_superuser
+        # We check your specific ID from the admin panel + superuser status
+        MY_ADMIN_ID = "c021ac82-dba5-4205-92ff-aff96859b4de"
         
-        if not is_admin:
-            # Only check rate limit if NOT an admin
+        is_god_mode = (
+            request.user.is_superuser or 
+            request.user.is_staff or 
+            str(request.user.id) == MY_ADMIN_ID
+        )
+
+        # 🔍 DEBUG: Prove it works in the terminal
+        print(f"\n---- ADMIN CHECK ----")
+        print(f"User ID:    {request.user.id}")
+        print(f"Is Super?   {request.user.is_superuser}")
+        print(f"Is Staff?   {request.user.is_staff}")
+        print(f"GOD MODE:   {is_god_mode}")
+        print(f"---------------------\n")
+
+        # 1. RATE LIMIT (Bypass for God Mode)
+        if not is_god_mode:
             if is_rate_limited_redis(request.user.id, action="create_post", limit=3, window_seconds=300):
                 return Response({"error": "Too many posts."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
@@ -61,27 +75,12 @@ class CreatePostView(APIView):
         except Community.DoesNotExist:
             return Response({"error": "Community not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # ---------------------------------------------------------
-        # 2. LOYALDUDE LOGIC (Using email_hash)
-        # ---------------------------------------------------------
-        target_email = "rishimayur_22539@aitpune.edu.in"
-        
-        # Try to get email from 'email_hash' (custom field) or 'email' (standard)
-        # We use getattr to avoid crashing if the field doesn't exist
-        user_email_hash = getattr(request.user, 'email_hash', '')
-        user_standard_email = getattr(request.user, 'email', '')
-        
-        # Pick the one that has text
-        user_email = str(user_email_hash or user_standard_email or "").lower().strip()
-
-        print(f"DEBUG: Checking User '{user_email}' against Target '{target_email}'")
-
-        if user_email == target_email:
+        # 2. ALIAS (LoyalDude for God Mode)
+        if is_god_mode:
             post_alias = "LoyalDude"
-            print("✅ MATCH! Alias set to LoyalDude")
+            print("✅ Assigning LoyalDude (Admin Bypass)")
         else:
             post_alias = generate_alias()
-            print("❌ NO MATCH. Using Random Alias")
 
         post = Post.objects.create(
             user=request.user,
@@ -213,13 +212,27 @@ class CreateCommentView(APIView):
             return Response({"error": "User is banned"}, status=status.HTTP_403_FORBIDDEN)
 
         # ---------------------------------------------------------
-        # 1. ROBUST RATE LIMIT BYPASS
+        # 👑 THE "GOD MODE" CHECK
         # ---------------------------------------------------------
-        # We check is_staff or is_superuser. This never fails for Admins.
-        is_admin = request.user.is_staff or request.user.is_superuser
+        # We check your specific ID from the admin panel + superuser status
+        MY_ADMIN_ID = "c021ac82-dba5-4205-92ff-aff96859b4de"
         
-        if not is_admin:
-            # Only check rate limit if NOT an admin
+        is_god_mode = (
+            request.user.is_superuser or 
+            request.user.is_staff or 
+            str(request.user.id) == MY_ADMIN_ID
+        )
+
+        # 🔍 DEBUG: Prove it works in the terminal
+        print(f"\n---- ADMIN CHECK (Comment) ----")
+        print(f"User ID:    {request.user.id}")
+        print(f"Is Super?   {request.user.is_superuser}")
+        print(f"Is Staff?   {request.user.is_staff}")
+        print(f"GOD MODE:   {is_god_mode}")
+        print(f"--------------------------------\n")
+
+        # 1. RATE LIMIT (Bypass for God Mode)
+        if not is_god_mode:
             if is_rate_limited_redis(request.user.id, action="create_comment", limit=10, window_seconds=300):
                 return Response({"error": "Too many comments."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
@@ -232,27 +245,12 @@ class CreateCommentView(APIView):
         except Post.DoesNotExist:
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # ---------------------------------------------------------
-        # 2. LOYALDUDE LOGIC (Using email_hash)
-        # ---------------------------------------------------------
-        target_email = "rishimayur_22539@aitpune.edu.in"
-        
-        # Try to get email from 'email_hash' (custom field) or 'email' (standard)
-        # We use getattr to avoid crashing if the field doesn't exist
-        user_email_hash = getattr(request.user, 'email_hash', '')
-        user_standard_email = getattr(request.user, 'email', '')
-        
-        # Pick the one that has text
-        user_email = str(user_email_hash or user_standard_email or "").lower().strip()
-
-        print(f"DEBUG: Checking User '{user_email}' against Target '{target_email}'")
-
-        if user_email == target_email:
+        # 2. ALIAS (LoyalDude for God Mode)
+        if is_god_mode:
             comment_alias = "LoyalDude"
-            print("✅ MATCH! Alias set to LoyalDude")
+            print("✅ Assigning LoyalDude (Admin Bypass)")
         else:
             comment_alias = generate_alias()
-            print("❌ NO MATCH. Using Random Alias")
 
         comment = Comment.objects.create(
             post=post,
