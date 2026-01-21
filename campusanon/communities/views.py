@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
+from django.core.cache import cache
 from .models import Community, CommunityMembership
 
 class MyCommunitiesView(APIView):
@@ -11,6 +12,17 @@ class MyCommunitiesView(APIView):
     def get(self, request):
         user = request.user
         
+        # 1. GENERATE A UNIQUE CACHE KEY
+        # We need different keys for Admin vs Normal users
+        is_admin = user.is_staff or user.is_superuser
+        cache_key = f"communities_admin" if is_admin else f"communities_user_{user.id}"
+        
+        # 2. CHECK REDIS FIRST
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            print("⚡ Serving from Cache (Fast!)") 
+            return Response(cached_data)
+
         # ---------------------------------------------------------
         # 👑 GOD MODE CHECK (Staff/Superuser)
         # ---------------------------------------------------------
@@ -58,6 +70,12 @@ class MyCommunitiesView(APIView):
                 "branch": c.branch, # Helpful for frontend to show subtitles
                 "year": c.year
             })
+
+        # 5. SAVE TO REDIS (for 15 minutes)
+        # 900 seconds = 15 minutes
+        cache.set(cache_key, data, timeout=900)
+
+        return Response(data)
 
         return Response(data)
 
