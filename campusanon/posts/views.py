@@ -5,6 +5,9 @@ from rest_framework import status
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Sum, F, IntegerField
+from django.db.models.functions import Coalesce
+
 
 from communities.models import Community
 from accounts.models import User
@@ -732,3 +735,76 @@ class SearchPostsView(APIView):
             }
             for p in posts
         ])
+    
+
+
+class LeaderboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # 1. Calculate Score for every community
+        # We assume your Post model has 'likes_count' and 'comments_count' 
+        # (If not, we just count the related objects)
+        
+        communities = Community.objects.filter(is_global=False).annotate(
+            # Count Posts
+            total_posts=Count('posts', distinct=True),
+            
+            # Sum Likes on Posts (Coalesce turns None into 0)
+            post_likes=Coalesce(Sum('posts__likes_count'), 0),
+            
+            # Count Comments (via Posts)
+            # If you don't have a direct relation, this might be expensive, 
+            # but usually Post -> has_many -> Comments
+            total_comments=Count('posts__comments', distinct=True),
+            
+            # Sum Likes on Comments (Deep relationship)
+            comment_likes=Coalesce(Sum('posts__comments__likes_count'), 0)
+        ).annotate(
+            # 🏆 THE FORMULA
+            engagement_score=(
+                (F('total_posts') * 10) +       # Posts are worth 10
+                (F('total_comments') * 5) +     # Comments are worth 5
+                (F('post_likes') * 1) +         # Likes are worth 1
+                (F('comment_likes') * 1)        # Comment likes worth 1
+            )
+        ).order_by('-engagement_score') # Sort Highest first
+
+        # 2. Serialize
+        data = [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "score": c.engagement_score,
+                "rank": index + 1,
+                "stats": {
+                    "posts": c.total_posts,
+                    "comments": c.total_comments
+                }
+            }
+            for index, c in enumerate(communities)
+        ]
+
+        return Response(data)
+
+class CommunityScoreView(APIView):
+    """ Get the score for just ONE community (for the header) """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, community_id):
+        try:
+            c = Community.objects.filter(id=community_id).annotate(
+                total_posts=Count('posts', distinct=True),
+                post_likes=Coalesce(Sum('posts__likes_count'), 0),
+                total_comments=Count('posts__comments', distinct=True),
+                comment_likes=Coalesce(Sum('posts__comments__likes_count'), 0)
+            ).annotate(
+                engagement_score=(
+                    (F('total_posts') * 10) + (F('total_comments') * 5) +
+                    (F('post_likes') * 1) + (F('comment_likes') * 1)
+                )
+            ).first()
+
+            return Response({"score": c.engagement_score if c else 0})
+        except Exception as e:
+            return Response({"score": 0})

@@ -15,6 +15,8 @@ from .views import (
     AdminUnhideCommentView,
     AdminAuditLogView,
     SearchPostsView,
+    LeaderboardView,
+    CommunityScoreView
 )
 
 urlpatterns = [
@@ -44,4 +46,7 @@ urlpatterns = [
 
     # Search
     path("search/", SearchPostsView.as_view(), name="search-posts"),
+
+    path('leaderboard/', LeaderboardView.as_view()),
+    path('<uuid:community_id>/score/', CommunityScoreView.as_view()),
 ]
