@@ -107,14 +107,13 @@ class LeaderboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # ✅ FIX: Use 'post_set' instead of 'posts'
+        # ✅ FIX: Django says the field is named 'post' (singular)
         communities = Community.objects.filter(is_global=False).annotate(
-            total_posts=Count('post_set') 
+            total_posts=Count('post') 
         ).order_by('-total_posts')
 
         data = []
         for index, c in enumerate(communities):
-            # Calculate score (10 points per post)
             score = c.total_posts * 10
             
             data.append({
@@ -136,12 +135,11 @@ class CommunityScoreView(APIView):
 
     def get(self, request, community_id):
         try:
-            # ✅ FIX: Use 'post_set' everywhere here too
-            # Note: We are only counting posts/likes for now to be safe. 
-            # Complex comment math might require 'post_set__comment_set' which gets messy.
+            # ✅ FIX: Use 'post' here too
+            # Also updated 'post__likes_count' (double underscore)
             c = Community.objects.filter(id=community_id).annotate(
-                total_posts=Count('post_set', distinct=True),
-                post_likes=Coalesce(Sum('post_set__likes_count'), 0),
+                total_posts=Count('post', distinct=True),
+                post_likes=Coalesce(Sum('post__likes_count'), 0),
             ).annotate(
                 engagement_score=(
                     (F('total_posts') * 10) + 
