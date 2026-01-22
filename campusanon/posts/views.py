@@ -75,10 +75,10 @@ class CreatePostView(APIView):
         except Community.DoesNotExist:
             return Response({"error": "Community not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. ALIAS (LoyalDude for God Mode)
+        # 2. ALIAS (loyaldude for God Mode)
         if is_god_mode:
-            post_alias = "LoyalDude"
-            print("✅ Assigning LoyalDude (Admin Bypass)")
+            post_alias = "loyaldude"
+            print("✅ Assigning loyaldude (Admin Bypass)")
         else:
             post_alias = generate_alias()
 
@@ -249,10 +249,10 @@ class CreateCommentView(APIView):
         except Post.DoesNotExist:
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. ALIAS (LoyalDude for God Mode)
+        # 2. ALIAS (loyaldude for God Mode)
         if is_god_mode:
-            comment_alias = "LoyalDude"
-            print("✅ Assigning LoyalDude (Admin Bypass)")
+            comment_alias = "loyaldude"
+            print("✅ Assigning loyaldude (Admin Bypass)")
         else:
             comment_alias = generate_alias()
 
