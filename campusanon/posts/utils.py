@@ -52,11 +52,11 @@ def log_admin_action(admin, action, target_id, target_type, reason=""):
 
 
 ADJECTIVES = [
-    "Silent", "Curious", "Hidden", "Lost", "Brave", "Witty", "Calm"
+    "Bhadkila", "Chulbula", "Pagal", "Chaman", "Pookie", "Chalu", "Kadwa", "Lafanga", "Jhootha", "Bhondu", "Chikna", "Maal", "Kaalu", "Sexy"
 ]
 
 NOUNS = [
-    "Fox", "Crow", "Leaf", "Wolf", "Tiger", "Owl", "River"
+    "Aloo", "Tatta", "Bandar", "Qtiya", "Genda", "Napunsak", "Billu", "Chomu", "Chindi", "Nigger", "Susu", "Adrak", "Hottie", "Pucchi"
 ]
 
 
