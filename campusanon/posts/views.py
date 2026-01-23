@@ -5,6 +5,10 @@ from rest_framework import status
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.db.models import Count, Exists, OuterRef
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
+from communities.models import Community, CommunityMembership # Check your paths
+from django.db.models import Q
 
 from communities.models import Community
 from accounts.models import User
@@ -108,64 +112,103 @@ class CommunityFeedView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
-        try:
-            Community.objects.get(id=community_id)
-        except Community.DoesNotExist:
+        user = request.user
+
+        # 1. Get Community (or 404)
+        community = get_object_or_404(Community, id=community_id)
+
+        # ---------------------------------------------------------
+        # 🔒 SECURITY CHECK (The "Bouncer")
+        # ---------------------------------------------------------
+        # We must verify if the user is actually allowed to see this feed.
+        
+        has_access = False
+
+        # Rule 1: Allow if Community is Global (All)
+        if community.is_global:
+            has_access = True
+            
+        # Rule 2: Allow if User is Admin/Staff (God Mode)
+        elif user.is_staff or user.is_superuser:
+            has_access = True
+
+        # Rule 3: Allow if User matches Year AND Branch
+        # (e.g. If community is "3 IT", user must be Year 3 and Branch IT)
+        # Note: If community.year is None, it ignores year (e.g. "All IT Students")
+        elif (
+            (community.year is None or community.year == user.year) and 
+            (community.branch is None or community.branch == user.branch)
+        ):
+            has_access = True
+            
+        # Rule 4: Allow if User is explicitly a member (e.g. joined a club manually)
+        elif CommunityMembership.objects.filter(user=user, community=community).exists():
+            has_access = True
+
+        # 🚨 FINAL VERDICT
+        if not has_access:
             return Response(
-                {"error": "Community not found"},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "🚫 Access Denied: You do not belong to this community."},
+                status=status.HTTP_403_FORBIDDEN
             )
 
+        # ---------------------------------------------------------
+        # 🚀 OPTIMIZED QUERY (Your original logic)
+        # ---------------------------------------------------------
+        
         cursor = request.query_params.get("cursor")
 
-        # Define a subquery to check if THIS user liked the post
+        # Subquery: Did THIS user like the post?
         is_liked_by_user = PostLike.objects.filter(
             post=OuterRef('pk'),
-            user=request.user
+            user=user
         )
 
-        # Check if user REPORTED
+        # Subquery: Did THIS user report the post?
         is_reported_by_user = PostReport.objects.filter(
             post=OuterRef('pk'),
-            reporter=request.user
+            reporter=user
         )
 
-        # Annotate the main query
+        # Main Query with Annotation
         posts = Post.objects.filter(
-            community_id=community_id,
+            community=community,  # Filter by the secure community object
             is_hidden=False
         ).annotate(
-            # Count likes directly in the database (Faster!)
+            # Count likes directly in DB
             total_likes=Count('likes'),
-            # Returns True/False if the subquery finds a match
+            # Boolean checks
             is_liked=Exists(is_liked_by_user),
             is_reported=Exists(is_reported_by_user)
         )
 
+        # Cursor Pagination Logic
         if cursor:
             cursor_dt = parse_datetime(cursor)
             if cursor_dt:
                 posts = posts.filter(created_at__lt=cursor_dt)
 
-        # Order by creation (newest first)
+        # Order & Slice
         posts = list(
             posts.order_by("-created_at")[:PAGE_SIZE]
         )
 
+        # Serialize Data
         data = [
             {
                 "id": str(p.id),
                 "alias": p.alias,
                 "content": p.content,
                 "created_at": p.created_at,
-                "likes_count": p.total_likes, # Uses the annotation we added earlier
-                "is_liked": p.is_liked,       # Uses the annotation we added earlier
-                "is_mine": p.user_id == request.user.id,
+                "likes_count": p.total_likes,
+                "is_liked": p.is_liked,
+                "is_mine": p.user_id == user.id,
                 "is_reported": p.is_reported
             }
             for p in posts
         ]
 
+        # Calculate Next Cursor
         next_cursor = None
         if posts:
             next_cursor = posts[-1].created_at.isoformat()
@@ -174,7 +217,6 @@ class CommunityFeedView(APIView):
             "results": data,
             "next_cursor": next_cursor
         })
-
 
 # -------------------------------
 # DELETE OWN POST
