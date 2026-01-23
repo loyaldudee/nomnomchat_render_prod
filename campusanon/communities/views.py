@@ -107,57 +107,83 @@ class LeaderboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # ✅ NOW CONSISTENT: Counts Posts AND Likes
+        # 🛡️ ALGORITHM: The "Anti-Spam" Engagement Score
+        # We use 'post' (singular) because that is the relationship name Django found.
+        # We assume comments are linked via 'comments' (standard related_name).
+        
         communities = Community.objects.filter(is_global=False).annotate(
+            # 1. Count Posts
             total_posts=Count('post', distinct=True),
-            # Count the total number of likes across all posts in this community
-            total_likes=Count('post__likes', distinct=True) 
-        ).order_by('-total_posts')
+            
+            # 2. Count Post Likes (Requires user interaction)
+            total_post_likes=Count('post__likes', distinct=True),
+            
+            # 3. Count Comments (High value interaction)
+            total_comments=Count('post__comments', distinct=True),
+            
+            # 4. Count Comment Likes (Depth of conversation)
+            # We use 'post__comments__likes' assuming the Comment model has a 'likes' relation
+            total_comment_likes=Count('post__comments__likes', distinct=True)
+        )
 
         data = []
-        for index, c in enumerate(communities):
-            # ✅ Formula: (Posts * 10) + (Likes * 1)
-            score = (c.total_posts * 10) + (c.total_likes * 1)
+        for c in communities:
+            # 🧮 THE FORMULA
+            score = (
+                (c.total_posts * 5) +        # Base value (lowered to discourage spam)
+                (c.total_post_likes * 2) +   # Likes prove quality
+                (c.total_comments * 8) +     # Comments are GOLD (conversation)
+                (c.total_comment_likes * 1)  # Good replies count too
+            )
             
             data.append({
                 "id": str(c.id),
                 "name": c.name,
                 "score": score,
-                "rank": index + 1,
                 "stats": {
                     "posts": c.total_posts,
-                    "likes": c.total_likes # Added this just in case you want to show it
+                    "likes": c.total_post_likes,
+                    "comments": c.total_comments
                 }
             })
-        
-        # Sort Python list just in case the score formula changes the order
+
+        # Sort by Score (Highest First) in Python 
+        # (It's safer than doing math in the SQL order_by clause for complex sums)
         data.sort(key=lambda x: x['score'], reverse=True)
 
-        # Re-assign ranks after sorting by Score (not just posts)
-        for i, item in enumerate(data):
-            item['rank'] = i + 1
+        # Assign Ranks
+        for index, item in enumerate(data):
+            item['rank'] = index + 1
 
         return Response(data)
 
 class CommunityScoreView(APIView):
-    """ Get the score for just ONE community """
+    """ Get the score for just ONE community (using the same formula) """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
         try:
-            # ✅ FIX: Use 'post' here too
-            # Also updated 'post__likes_count' (double underscore)
+            # We execute the same annotation for a single community
             c = Community.objects.filter(id=community_id).annotate(
                 total_posts=Count('post', distinct=True),
-                post_likes=Coalesce(Sum('post__likes_count'), 0),
-            ).annotate(
-                engagement_score=(
-                    (F('total_posts') * 10) + 
-                    (F('post_likes') * 1)
-                )
+                total_post_likes=Count('post__likes', distinct=True),
+                total_comments=Count('post__comments', distinct=True),
+                total_comment_likes=Count('post__comments__likes', distinct=True)
             ).first()
 
-            return Response({"score": c.engagement_score if c else 0})
+            if not c:
+                return Response({"score": 0})
+
+            # 🧮 SAME FORMULA
+            score = (
+                (c.total_posts * 5) + 
+                (c.total_post_likes * 2) + 
+                (c.total_comments * 8) + 
+                (c.total_comment_likes * 1)
+            )
+
+            return Response({"score": score})
         except Exception as e:
-            print(f"Error calculating score: {e}")
+            # Fallback if a relation doesn't exist yet (e.g. no comments yet)
+            print(f"Score Calc Error: {e}")
             return Response({"score": 0})
