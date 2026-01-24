@@ -3,13 +3,28 @@ from communities.models import Community
 from django.utils.text import slugify
 
 class Command(BaseCommand):
-    help = 'Generates the standard set of college communities'
+    help = 'Generates the standard set of college communities including Global'
 
     def handle(self, *args, **kwargs):
         self.stdout.write("🏗️  Building Communities...")
 
-        # DEFINING THE RULES
-        # Format: (Branch Name, has_divisions_boolean)
+        # 1. ✅ CREATE GLOBAL COMMUNITY
+        global_comm, created = Community.objects.get_or_create(
+            slug="all",
+            defaults={
+                "name": "All",
+                "is_global": True,
+                "year": None,
+                "branch": None,
+                "division": None
+            }
+        )
+        if created:
+            self.stdout.write("   🌍 Created: Global 'All' Community")
+        else:
+            self.stdout.write("   🌍 Note: Global 'All' already exists")
+
+        # 2. CREATE ACADEMIC COMMUNITIES
         
         # Years 1 & 2: All branches + ARE
         branches_y1_y2 = [
@@ -59,7 +74,7 @@ class Command(BaseCommand):
                     slug_str = f"{year}-{branch}{'-'+div if div else ''}"
                     slug = slugify(slug_str)
 
-                    # Create or Get (Safe to run multiple times)
+                    # Create or Get
                     obj, created = Community.objects.get_or_create(
                         year=year,
                         branch=branch,
@@ -77,4 +92,4 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(f"   Note: {name} already exists")
 
-        self.stdout.write(f"🎉 Done! Created {count} new communities.")
+        self.stdout.write(f"🎉 Done! Created {count} academic communities.")

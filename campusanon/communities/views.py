@@ -9,6 +9,8 @@ from django.db.models import Count, Sum, F, IntegerField
 from django.db.models.functions import Coalesce
 from django.db.models import Count
 
+from .utils import get_or_create_global_community  # ✅ Import this helper
+
 class MyCommunitiesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -16,31 +18,39 @@ class MyCommunitiesView(APIView):
         user = request.user
         
         # 1. GENERATE A UNIQUE CACHE KEY
-        is_admin = user.is_staff or user.is_superuser
-        cache_key = f"communities_admin" if is_admin else f"communities_user_{user.id}"
+        # ⚠️ FIX: We added '_v2_' and '{user.id}' to the admin key.
+        # This forces a fresh fetch and prevents admins from sharing stale data.
+        cache_key = f"communities_v2_{user.id}"
         
         # 2. CHECK REDIS
         cached_data = cache.get(cache_key)
         if cached_data:
-            print("⚡ Serving from Cache (Fast!)") 
             return Response(cached_data)
 
         # ---------------------------------------------------------
-        # 👑 GOD MODE (Staff/Superuser sees ALL)
+        # 👑 GOD MODE (Staff/Superuser)
         # ---------------------------------------------------------
         if user.is_staff or user.is_superuser:
-            print(f"👑 ADMIN DETECTED ({user.username}): Showing ALL communities")
+            print(f"👑 ADMIN DETECTED ({user.internal_username}): Checking Integrity...")
+            
+            # ✅ SELF-HEAL: If 'All' is missing for some reason, create it NOW.
+            # This fixes the issue where CLI-created superusers don't trigger the setup script.
+            if not Community.objects.filter(slug="all").exists():
+                print("   🛠️ Self-Healing: Re-creating missing 'All' community...")
+                get_or_create_global_community()
+
+            # Admins see EVERYTHING
             all_communities = Community.objects.all()
+        
         else:
             # -----------------------------------------------------
             # NORMAL STUDENT LOGIC (Strict Mode)
             # -----------------------------------------------------
             
-            # 1. GLOBAL ONLY: Only automatically show "All" (is_global=True)
-            # We REMOVED the logic that guessed based on Branch/Year.
+            # 1. GLOBAL: Get 'All'
             auto_communities = Community.objects.filter(is_global=True)
 
-            # 2. MANUAL: Get communities the user ACTUALLY joined (The strict A/B assignment)
+            # 2. MANUAL: Get strictly joined communities
             joined_ids = CommunityMembership.objects.filter(
                 user=user
             ).values_list('community_id', flat=True)
@@ -60,13 +70,15 @@ class MyCommunitiesView(APIView):
                 "is_global": c.is_global,
                 "branch": c.branch, 
                 "year": c.year,
-                "division": c.division # ✅ Helpful for frontend
+                "division": c.division 
             })
 
         # 5. SAVE TO REDIS (15 mins)
         cache.set(cache_key, data, timeout=900)
 
         return Response(data)
+    
+
 
 class SearchCommunitiesView(APIView):
     permission_classes = [IsAuthenticated]
