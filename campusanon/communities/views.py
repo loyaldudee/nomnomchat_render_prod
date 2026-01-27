@@ -2,12 +2,13 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Q
 from django.core.cache import cache
 from .models import Community, CommunityMembership
-from django.db.models import Count, Sum, F, IntegerField
+from django.db.models import Count, Sum, F, IntegerField, Q
 from django.db.models.functions import Coalesce
 from django.db.models import Count
+from django.utils import timezone
+from datetime import timedelta
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
@@ -105,68 +106,143 @@ class LeaderboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # 🛡️ ALGORITHM: The "Anti-Spam" Engagement Score
-        # We use 'post' (singular) because that is the relationship name Django found.
-        # We assume comments are linked via 'comments' (standard related_name).
+        # ---------------------------------------------------------
+        # 1. DEFINE TIME WINDOWS (The 6 AM Rule)
+        # ---------------------------------------------------------
+        now = timezone.now()
         
-        communities = Community.objects.filter(is_global=False).annotate(
-            # 1. Count Posts
-            total_posts=Count('post', distinct=True),
-            
-            # 2. Count Post Likes (Requires user interaction)
-            total_post_likes=Count('post__likes', distinct=True),
-            
-            # 3. Count Comments (High value interaction)
-            total_comments=Count('post__comments', distinct=True),
-            
-            # 4. Count Comment Likes (Depth of conversation)
-            # We use 'post__comments__likes' assuming the Comment model has a 'likes' relation
-            total_comment_likes=Count('post__comments__likes', distinct=True)
-        )
+        # Define "Today 6 AM"
+        today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        
+        # If it's currently 4 AM, the "competition day" actually started yesterday at 6 AM.
+        if now < today_6am:
+            current_start = today_6am - timedelta(days=1)
+        else:
+            current_start = today_6am
 
-        data = []
-        for c in communities:
-            # 🧮 THE FORMULA
-            score = (
-                (c.total_posts * 5) +        # Base value (lowered to discourage spam)
-                (c.total_post_likes * 2) +   # Likes prove quality
-                (c.total_comments * 8) +     # Comments are GOLD (conversation)
-                (c.total_comment_likes * 1)  # Good replies count too
+        # Previous day (for finding yesterday's winner)
+        prev_start = current_start - timedelta(days=1)
+        prev_end = current_start
+
+        # ---------------------------------------------------------
+        # 2. CACHE CHECK
+        # ---------------------------------------------------------
+        # We cache this for 5 minutes so we don't hammer the DB
+        cache_key = f"leaderboard_daily_v1_{current_start.strftime('%Y%m%d')}"
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+
+        response_data = {}
+
+        # ---------------------------------------------------------
+        # 3. GENERATE LEADERBOARD PER YEAR
+        # ---------------------------------------------------------
+        # We loop through years 1 to 4
+        for year in [1, 2, 3, 4]:
+            
+            # A. GET LIVE STANDINGS (Since 6 AM)
+            # We filter actions that happened >= current_start
+            live_communities = Community.objects.filter(year=year, is_global=False).annotate(
+                # Count actions within the time window
+                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start), distinct=True),
+                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start), distinct=True),
+                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start), distinct=True),
+                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start), distinct=True)
+            )
+
+            leaderboard_list = []
+            for c in live_communities:
+                # 🧮 DAILY SCORE FORMULA
+                score = (
+                    (c.daily_posts * 5) + 
+                    (c.daily_likes * 2) + 
+                    (c.daily_comments * 8) + 
+                    (c.daily_comment_likes * 1)
+                )
+                leaderboard_list.append({
+                    "id": str(c.id),
+                    "name": c.name,
+                    "branch": c.branch,
+                    "division": c.division,
+                    "score": score,
+                    "stats": {
+                        "posts": c.daily_posts,
+                        "likes": c.daily_likes,
+                        "comments": c.daily_comments
+                    }
+                })
+
+            # Sort by Score (Highest First)
+            leaderboard_list.sort(key=lambda x: x['score'], reverse=True)
+            
+            # Add Rank
+            for idx, item in enumerate(leaderboard_list):
+                item['rank'] = idx + 1
+
+
+            # B. GET YESTERDAY'S WINNER
+            # We filter actions in the range [prev_start, prev_end]
+            past_communities = Community.objects.filter(year=year, is_global=False).annotate(
+                past_posts=Count('post', filter=Q(post__created_at__range=(prev_start, prev_end)), distinct=True),
+                past_likes=Count('post__likes', filter=Q(post__likes__created_at__range=(prev_start, prev_end)), distinct=True),
+                past_comments=Count('post__comments', filter=Q(post__comments__created_at__range=(prev_start, prev_end)), distinct=True),
+                past_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__range=(prev_start, prev_end)), distinct=True)
             )
             
-            data.append({
-                "id": str(c.id),
-                "name": c.name,
-                "score": score,
-                "stats": {
-                    "posts": c.total_posts,
-                    "likes": c.total_post_likes,
-                    "comments": c.total_comments
-                }
-            })
+            winner_data = None
+            highest_past_score = -1
 
-        # Sort by Score (Highest First) in Python 
-        # (It's safer than doing math in the SQL order_by clause for complex sums)
-        data.sort(key=lambda x: x['score'], reverse=True)
+            for c in past_communities:
+                p_score = (
+                    (c.past_posts * 5) + 
+                    (c.past_likes * 2) + 
+                    (c.past_comments * 8) + 
+                    (c.past_comment_likes * 1)
+                )
+                if p_score > highest_past_score and p_score > 0:
+                    highest_past_score = p_score
+                    winner_data = {
+                        "id": str(c.id),
+                        "name": c.name,
+                        "score": p_score,
+                        "title": "Yesterday's Champion"
+                    }
 
-        # Assign Ranks
-        for index, item in enumerate(data):
-            item['rank'] = index + 1
+            # C. ASSEMBLE YEAR DATA
+            response_data[year] = {
+                "live_leaderboard": leaderboard_list,
+                "yesterday_winner": winner_data  # Can be null if no activity yesterday
+            }
 
-        return Response(data)
+        # ---------------------------------------------------------
+        # 4. SAVE TO CACHE
+        # ---------------------------------------------------------
+        cache.set(cache_key, response_data, timeout=300)
+
+        return Response(response_data)
+
 
 class CommunityScoreView(APIView):
-    """ Get the score for just ONE community (using the same formula) """
+    """ Get the DAILY score for just ONE community (using the 6 AM rule) """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
         try:
-            # We execute the same annotation for a single community
+            # 1. Calculate Time Window
+            now = timezone.now()
+            today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+            if now < today_6am:
+                current_start = today_6am - timedelta(days=1)
+            else:
+                current_start = today_6am
+
+            # 2. Filter & Annotate (Same as Leaderboard)
             c = Community.objects.filter(id=community_id).annotate(
-                total_posts=Count('post', distinct=True),
-                total_post_likes=Count('post__likes', distinct=True),
-                total_comments=Count('post__comments', distinct=True),
-                total_comment_likes=Count('post__comments__likes', distinct=True)
+                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start), distinct=True),
+                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start), distinct=True),
+                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start), distinct=True),
+                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start), distinct=True)
             ).first()
 
             if not c:
@@ -174,14 +250,13 @@ class CommunityScoreView(APIView):
 
             # 🧮 SAME FORMULA
             score = (
-                (c.total_posts * 5) + 
-                (c.total_post_likes * 2) + 
-                (c.total_comments * 8) + 
-                (c.total_comment_likes * 1)
+                (c.daily_posts * 5) + 
+                (c.daily_likes * 2) + 
+                (c.daily_comments * 8) + 
+                (c.daily_comment_likes * 1)
             )
 
             return Response({"score": score})
         except Exception as e:
-            # Fallback if a relation doesn't exist yet (e.g. no comments yet)
             print(f"Score Calc Error: {e}")
             return Response({"score": 0})
