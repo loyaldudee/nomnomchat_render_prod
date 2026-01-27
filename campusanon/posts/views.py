@@ -9,8 +9,8 @@ from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 from communities.models import Community, CommunityMembership # Check your paths
 from django.db.models import Q
+from django.core.cache import cache
 
-from communities.models import Community
 from accounts.models import User
 from .models import (
     Post,
@@ -784,27 +784,45 @@ class SearchPostsView(APIView):
         ])
     
 
+class CheckNewNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        # ⚡ Fast Redis Check (Microseconds)
+        # Returns True if flag exists, False otherwise
+        has_new = cache.get(f"has_notif_{request.user.id}")
+        return Response({"has_new": bool(has_new)})
+
+
+# 2. MAIN LIST VIEW (Call this ONLY when 'has_new' is True)
 class NotificationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        # ✅ CLEAR THE FLAG
+        # Since the user is now fetching the list, we reset the alert.
+        cache.delete(f"has_notif_{request.user.id}")
+
         # Fetch notifications for THIS user
-        notifs = Notification.objects.filter(recipient=request.user)
+        notifs = Notification.objects.filter(
+            recipient=request.user
+        ).select_related('actor', 'post')
         
         data = []
         for n in notifs:
             data.append({
                 "id": str(n.id),
-                "actor_alias": n.actor.internal_username, # Or generate a random alias if you prefer privacy
-                "verb": n.verb, # 'like' or 'comment'
-                "post_id": str(n.post.id), # Frontend uses this to navigate
+                "actor_alias": n.actor.internal_username, 
+                "verb": n.verb, 
+                "post_id": str(n.post.id), 
                 "is_read": n.is_read,
                 "created_at": n.created_at
             })
             
         return Response(data)
 
+
+# 3. MARK AS READ
 class MarkNotificationReadView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -817,6 +835,8 @@ class MarkNotificationReadView(APIView):
         except Notification.DoesNotExist:
             return Response({"error": "Not found"}, status=404)
 
+
+# 4. DELETE NOTIFICATION
 class DeleteNotificationView(APIView):
     permission_classes = [IsAuthenticated]
 

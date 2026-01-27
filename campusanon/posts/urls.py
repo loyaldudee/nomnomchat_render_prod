@@ -17,7 +17,8 @@ from .views import (
     SearchPostsView,
     NotificationListView,
     MarkNotificationReadView,
-    DeleteNotificationView
+    DeleteNotificationView,
+    CheckNewNotificationsView  # 👈 IMPORT THIS
 )
 
 urlpatterns = [
@@ -34,13 +35,11 @@ urlpatterns = [
     path("like/<uuid:post_id>/", ToggleLikeView.as_view()),
 
     path("report/<uuid:post_id>/", ReportPostView.as_view(), name="report-post"),
-
     path("comment/report/<uuid:comment_id>/", ReportCommentView.as_view(), name="report-comment"),
 
-     # Admin moderation
+    # Admin moderation
     path("admin/user/ban/<uuid:user_id>/", AdminBanUserView.as_view(), name="admin-ban-user"),
     path("admin/user/unban/<uuid:user_id>/", AdminUnbanUserView.as_view(), name="admin-unban-user"),
-
     path("admin/post/unhide/<uuid:post_id>/", AdminUnhidePostView.as_view(), name="admin-unhide-post"),
     path("admin/comment/unhide/<uuid:comment_id>/", AdminUnhideCommentView.as_view(), name="admin-unhide-comment"),
     path("admin/audit-logs/", AdminAuditLogView.as_view(), name="admin-audit-logs"),
@@ -48,8 +47,9 @@ urlpatterns = [
     # Search
     path("search/", SearchPostsView.as_view(), name="search-posts"),
 
-
-    # ✅ NEW NOTIFICATION ENDPOINTS
+    # ✅ NOTIFICATIONS
+    path("notifications/check/", CheckNewNotificationsView.as_view(), name="check-notifications"), 
+    
     path("notifications/", NotificationListView.as_view(), name="list-notifications"),
     path("notifications/read/<uuid:notification_id>/", MarkNotificationReadView.as_view(), name="mark-read"),
     path("notifications/delete/<uuid:notification_id>/", DeleteNotificationView.as_view(), name="delete-notification"),
