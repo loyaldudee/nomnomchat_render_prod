@@ -8,7 +8,7 @@ from django.db.models import Count, Sum, F, IntegerField, Q
 from django.db.models.functions import Coalesce
 from django.db.models import Count
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
@@ -112,7 +112,6 @@ class LeaderboardView(APIView):
         # ---------------------------------------------------------
         now_utc = timezone.now()
         
-        # ✅ FIX: Use ZoneInfo instead of pytz
         ist_tz = ZoneInfo('Asia/Kolkata')
         now_ist = now_utc.astimezone(ist_tz)
         
@@ -126,10 +125,10 @@ class LeaderboardView(APIView):
         prev_start_ist = start_ist - timedelta(days=1)
         prev_end_ist = start_ist
 
-        # ✅ FIX: Use timezone.utc instead of pytz.utc
-        current_start_utc = start_ist.astimezone(timezone.utc)
-        prev_start_utc = prev_start_ist.astimezone(timezone.utc)
-        prev_end_utc = prev_end_ist.astimezone(timezone.utc)
+        # ✅ FIX: Use dt_timezone.utc (Standard Python)
+        current_start_utc = start_ist.astimezone(dt_timezone.utc)
+        prev_start_utc = prev_start_ist.astimezone(dt_timezone.utc)
+        prev_end_utc = prev_end_ist.astimezone(dt_timezone.utc)
 
         # ---------------------------------------------------------
         # 2. CACHE CHECK
@@ -222,7 +221,6 @@ class CommunityScoreView(APIView):
         try:
             # 1. Calculate Time Window (IST)
             now_utc = timezone.now()
-            # ✅ FIX: Use ZoneInfo
             ist_tz = ZoneInfo('Asia/Kolkata')
             now_ist = now_utc.astimezone(ist_tz)
             
@@ -233,8 +231,8 @@ class CommunityScoreView(APIView):
             else:
                 start_ist = today_6am_ist
                 
-            # ✅ FIX: Use timezone.utc
-            current_start_utc = start_ist.astimezone(timezone.utc)
+            # ✅ FIX: Use dt_timezone.utc
+            current_start_utc = start_ist.astimezone(dt_timezone.utc)
 
             # 2. Filter & Annotate
             c = Community.objects.filter(id=community_id).annotate(
