@@ -9,6 +9,7 @@ from django.db.models.functions import Coalesce
 from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta
+import pytz
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
@@ -107,28 +108,38 @@ class LeaderboardView(APIView):
 
     def get(self, request):
         # ---------------------------------------------------------
-        # 1. DEFINE TIME WINDOWS (The 6 AM Rule)
+        # 1. TIMEZONE AWARE LOGIC (IST +5:30)
         # ---------------------------------------------------------
-        now = timezone.now()
+        # Get current UTC time
+        now_utc = timezone.now()
         
-        # Define "Today 6 AM"
-        today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        # Convert to India Time (IST)
+        ist_tz = pytz.timezone('Asia/Kolkata')
+        now_ist = now_utc.astimezone(ist_tz)
         
-        # If it's currently 4 AM, the "competition day" actually started yesterday at 6 AM.
-        if now < today_6am:
-            current_start = today_6am - timedelta(days=1)
+        # Define "Today 6 AM" in IST
+        today_6am_ist = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
+        
+        # If it's currently 4 AM IST, the "competition day" started YESTERDAY at 6 AM.
+        if now_ist < today_6am_ist:
+            start_ist = today_6am_ist - timedelta(days=1)
         else:
-            current_start = today_6am
+            start_ist = today_6am_ist
 
-        # Previous day (for finding yesterday's winner)
-        prev_start = current_start - timedelta(days=1)
-        prev_end = current_start
+        # Previous day (for yesterday's winner)
+        prev_start_ist = start_ist - timedelta(days=1)
+        prev_end_ist = start_ist
+
+        # ⚠️ CRITICAL: Convert back to UTC for Database Queries
+        # Django stores data in UTC, so we must filter using UTC times.
+        current_start_utc = start_ist.astimezone(pytz.utc)
+        prev_start_utc = prev_start_ist.astimezone(pytz.utc)
+        prev_end_utc = prev_end_ist.astimezone(pytz.utc)
 
         # ---------------------------------------------------------
-        # 2. CACHE CHECK
+        # 2. CACHE CHECK (Using IST-based Key)
         # ---------------------------------------------------------
-        # We cache this for 5 minutes so we don't hammer the DB
-        cache_key = f"leaderboard_daily_v1_{current_start.strftime('%Y%m%d')}"
+        cache_key = f"leaderboard_ist_v1_{start_ist.strftime('%Y%m%d')}"
         cached_data = cache.get(cache_key)
         if cached_data:
             return Response(cached_data)
@@ -138,22 +149,18 @@ class LeaderboardView(APIView):
         # ---------------------------------------------------------
         # 3. GENERATE LEADERBOARD PER YEAR
         # ---------------------------------------------------------
-        # We loop through years 1 to 4
         for year in [1, 2, 3, 4]:
             
-            # A. GET LIVE STANDINGS (Since 6 AM)
-            # We filter actions that happened >= current_start
+            # A. GET LIVE STANDINGS (Using UTC Query Window)
             live_communities = Community.objects.filter(year=year, is_global=False).annotate(
-                # Count actions within the time window
-                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start), distinct=True),
-                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start), distinct=True),
-                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start), distinct=True),
-                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start), distinct=True)
+                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start_utc), distinct=True),
+                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start_utc), distinct=True),
+                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start_utc), distinct=True),
+                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start_utc), distinct=True)
             )
 
             leaderboard_list = []
             for c in live_communities:
-                # 🧮 DAILY SCORE FORMULA
                 score = (
                     (c.daily_posts * 5) + 
                     (c.daily_likes * 2) + 
@@ -173,21 +180,17 @@ class LeaderboardView(APIView):
                     }
                 })
 
-            # Sort by Score (Highest First)
             leaderboard_list.sort(key=lambda x: x['score'], reverse=True)
             
-            # Add Rank
             for idx, item in enumerate(leaderboard_list):
                 item['rank'] = idx + 1
 
-
-            # B. GET YESTERDAY'S WINNER
-            # We filter actions in the range [prev_start, prev_end]
+            # B. GET YESTERDAY'S WINNER (Using UTC Query Window)
             past_communities = Community.objects.filter(year=year, is_global=False).annotate(
-                past_posts=Count('post', filter=Q(post__created_at__range=(prev_start, prev_end)), distinct=True),
-                past_likes=Count('post__likes', filter=Q(post__likes__created_at__range=(prev_start, prev_end)), distinct=True),
-                past_comments=Count('post__comments', filter=Q(post__comments__created_at__range=(prev_start, prev_end)), distinct=True),
-                past_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__range=(prev_start, prev_end)), distinct=True)
+                past_posts=Count('post', filter=Q(post__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True),
+                past_likes=Count('post__likes', filter=Q(post__likes__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True),
+                past_comments=Count('post__comments', filter=Q(post__comments__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True),
+                past_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True)
             )
             
             winner_data = None
@@ -209,46 +212,47 @@ class LeaderboardView(APIView):
                         "title": "Yesterday's Champion"
                     }
 
-            # C. ASSEMBLE YEAR DATA
             response_data[year] = {
                 "live_leaderboard": leaderboard_list,
-                "yesterday_winner": winner_data  # Can be null if no activity yesterday
+                "yesterday_winner": winner_data
             }
 
-        # ---------------------------------------------------------
-        # 4. SAVE TO CACHE
-        # ---------------------------------------------------------
-        cache.set(cache_key, response_data, timeout=90)
-
+        cache.set(cache_key, response_data, timeout=300)
         return Response(response_data)
 
 
 class CommunityScoreView(APIView):
-    """ Get the DAILY score for just ONE community (using the 6 AM rule) """
+    """ Get the DAILY score for just ONE community (using IST 6 AM rule) """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
         try:
-            # 1. Calculate Time Window
-            now = timezone.now()
-            today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
-            if now < today_6am:
-                current_start = today_6am - timedelta(days=1)
+            # 1. Calculate Time Window (IST)
+            now_utc = timezone.now()
+            ist_tz = pytz.timezone('Asia/Kolkata')
+            now_ist = now_utc.astimezone(ist_tz)
+            
+            today_6am_ist = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
+            
+            if now_ist < today_6am_ist:
+                start_ist = today_6am_ist - timedelta(days=1)
             else:
-                current_start = today_6am
+                start_ist = today_6am_ist
+                
+            # Convert back to UTC for DB
+            current_start_utc = start_ist.astimezone(pytz.utc)
 
-            # 2. Filter & Annotate (Same as Leaderboard)
+            # 2. Filter & Annotate
             c = Community.objects.filter(id=community_id).annotate(
-                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start), distinct=True),
-                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start), distinct=True),
-                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start), distinct=True),
-                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start), distinct=True)
+                daily_posts=Count('post', filter=Q(post__created_at__gte=current_start_utc), distinct=True),
+                daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start_utc), distinct=True),
+                daily_comments=Count('post__comments', filter=Q(post__comments__created_at__gte=current_start_utc), distinct=True),
+                daily_comment_likes=Count('post__comments__likes', filter=Q(post__comments__likes__created_at__gte=current_start_utc), distinct=True)
             ).first()
 
             if not c:
                 return Response({"score": 0})
 
-            # 🧮 SAME FORMULA
             score = (
                 (c.daily_posts * 5) + 
                 (c.daily_likes * 2) + 
