@@ -9,7 +9,7 @@ from django.db.models.functions import Coalesce
 from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta
-import pytz
+from zoneinfo import ZoneInfo
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
@@ -110,34 +110,29 @@ class LeaderboardView(APIView):
         # ---------------------------------------------------------
         # 1. TIMEZONE AWARE LOGIC (IST +5:30)
         # ---------------------------------------------------------
-        # Get current UTC time
         now_utc = timezone.now()
         
-        # Convert to India Time (IST)
-        ist_tz = pytz.timezone('Asia/Kolkata')
+        # ✅ FIX: Use ZoneInfo instead of pytz
+        ist_tz = ZoneInfo('Asia/Kolkata')
         now_ist = now_utc.astimezone(ist_tz)
         
-        # Define "Today 6 AM" in IST
         today_6am_ist = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
         
-        # If it's currently 4 AM IST, the "competition day" started YESTERDAY at 6 AM.
         if now_ist < today_6am_ist:
             start_ist = today_6am_ist - timedelta(days=1)
         else:
             start_ist = today_6am_ist
 
-        # Previous day (for yesterday's winner)
         prev_start_ist = start_ist - timedelta(days=1)
         prev_end_ist = start_ist
 
-        # ⚠️ CRITICAL: Convert back to UTC for Database Queries
-        # Django stores data in UTC, so we must filter using UTC times.
-        current_start_utc = start_ist.astimezone(pytz.utc)
-        prev_start_utc = prev_start_ist.astimezone(pytz.utc)
-        prev_end_utc = prev_end_ist.astimezone(pytz.utc)
+        # ✅ FIX: Use timezone.utc instead of pytz.utc
+        current_start_utc = start_ist.astimezone(timezone.utc)
+        prev_start_utc = prev_start_ist.astimezone(timezone.utc)
+        prev_end_utc = prev_end_ist.astimezone(timezone.utc)
 
         # ---------------------------------------------------------
-        # 2. CACHE CHECK (Using IST-based Key)
+        # 2. CACHE CHECK
         # ---------------------------------------------------------
         cache_key = f"leaderboard_ist_v1_{start_ist.strftime('%Y%m%d')}"
         cached_data = cache.get(cache_key)
@@ -151,7 +146,6 @@ class LeaderboardView(APIView):
         # ---------------------------------------------------------
         for year in [1, 2, 3, 4]:
             
-            # A. GET LIVE STANDINGS (Using UTC Query Window)
             live_communities = Community.objects.filter(year=year, is_global=False).annotate(
                 daily_posts=Count('post', filter=Q(post__created_at__gte=current_start_utc), distinct=True),
                 daily_likes=Count('post__likes', filter=Q(post__likes__created_at__gte=current_start_utc), distinct=True),
@@ -185,7 +179,7 @@ class LeaderboardView(APIView):
             for idx, item in enumerate(leaderboard_list):
                 item['rank'] = idx + 1
 
-            # B. GET YESTERDAY'S WINNER (Using UTC Query Window)
+            # B. GET YESTERDAY'S WINNER
             past_communities = Community.objects.filter(year=year, is_global=False).annotate(
                 past_posts=Count('post', filter=Q(post__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True),
                 past_likes=Count('post__likes', filter=Q(post__likes__created_at__range=(prev_start_utc, prev_end_utc)), distinct=True),
@@ -222,14 +216,14 @@ class LeaderboardView(APIView):
 
 
 class CommunityScoreView(APIView):
-    """ Get the DAILY score for just ONE community (using IST 6 AM rule) """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
         try:
             # 1. Calculate Time Window (IST)
             now_utc = timezone.now()
-            ist_tz = pytz.timezone('Asia/Kolkata')
+            # ✅ FIX: Use ZoneInfo
+            ist_tz = ZoneInfo('Asia/Kolkata')
             now_ist = now_utc.astimezone(ist_tz)
             
             today_6am_ist = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
@@ -239,8 +233,8 @@ class CommunityScoreView(APIView):
             else:
                 start_ist = today_6am_ist
                 
-            # Convert back to UTC for DB
-            current_start_utc = start_ist.astimezone(pytz.utc)
+            # ✅ FIX: Use timezone.utc
+            current_start_utc = start_ist.astimezone(timezone.utc)
 
             # 2. Filter & Annotate
             c = Community.objects.filter(id=community_id).annotate(
