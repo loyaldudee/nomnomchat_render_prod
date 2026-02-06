@@ -10,7 +10,7 @@ from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
-from campusanon.campusanon.redis import redis_client
+from campusanon.redis import redis_client
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 

@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 from communities.models import Community, CommunityMembership # Check your paths
 from django.db.models import Q
 from django.core.cache import cache
-from campusanon.campusanon.redis import redis_client
+from campusanon.redis import redis_client
 
 from accounts.models import User
 from .models import (
