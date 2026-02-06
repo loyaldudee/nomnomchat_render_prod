@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from communities.models import Community, CommunityMembership # Check your paths
 from django.db.models import Q
 from django.core.cache import cache
+from campusanon.campusanon.redis import redis_client
 
 from accounts.models import User
 from .models import (
@@ -118,6 +119,12 @@ class CommunityFeedView(APIView):
 
     def get(self, request, community_id):
         user = request.user
+
+        # --- NEW: LIGHTWEIGHT ONLINE COUNTER HEARTBEAT ---
+        # Mark user as active in this community for 60 seconds
+        # Using a pattern like presence:community_id:user_id
+        presence_key = f"presence:{community_id}:{user.id}"
+        redis_client.setex(presence_key, 60, "active")
 
         # 1. Get Community (or 404)
         community = get_object_or_404(Community, id=community_id)

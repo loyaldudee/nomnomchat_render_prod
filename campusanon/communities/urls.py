@@ -3,7 +3,8 @@ from .views import (
     MyCommunitiesView, 
     SearchCommunitiesView, 
     LeaderboardView,     
-    CommunityScoreView   
+    CommunityScoreView,
+    CommunityOnlineCountView,
 )
 
 urlpatterns = [
@@ -18,4 +19,6 @@ urlpatterns = [
 
     # ✅ 4. ADD THIS: Score (matches /communities/<id>/score/)
     path("<uuid:community_id>/score/", CommunityScoreView.as_view(), name="community-score"),
+
+    path("<uuid:community_id>/online/", CommunityOnlineCountView.as_view(), name="community-online-count"),
 ]

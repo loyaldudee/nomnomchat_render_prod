@@ -10,6 +10,7 @@ from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
+from campusanon.campusanon.redis import redis_client
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
@@ -256,3 +257,22 @@ class CommunityScoreView(APIView):
         except Exception as e:
             print(f"Score Calc Error: {e}")
             return Response({"score": 0})
+
+
+class CommunityOnlineCountView(APIView):
+    """
+    Returns the number of users who have requested a feed in the last 60 seconds.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, community_id):
+        # Redis pattern to find all active users in this specific community
+        pattern = f"presence:{community_id}:*"
+        
+        # This returns a list of keys currently in Redis matching the pattern
+        online_keys = redis_client.keys(pattern)
+        
+        return Response({
+            "community_id": community_id,
+            "online_count": len(online_keys)
+        })
