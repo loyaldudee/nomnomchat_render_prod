@@ -11,6 +11,8 @@ from django.utils import timezone
 from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from campusanon.redis import redis_client
+from django.conf import settings
+import redis
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
