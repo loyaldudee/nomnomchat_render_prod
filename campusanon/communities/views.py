@@ -11,8 +11,6 @@ from django.utils import timezone
 from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 from campusanon.redis import redis_client
-from django.conf import settings
-import redis
 
 from .utils import get_or_create_global_community  # ✅ Import this helper
 
@@ -261,31 +259,18 @@ class CommunityScoreView(APIView):
             return Response({"score": 0})
 
 
-redis_client = redis.StrictRedis.from_url(settings.REDIS_URL, decode_responses=True)
-
 class CommunityOnlineCountView(APIView):
-    """
-    Returns the number of users online AND keeps the current user's session alive.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
-        user = request.user
-
-        # 1. HEARTBEAT: I am here! Extend my life for another 60 seconds.
-        # This fixes the issue where users "disappear" after 1 minute.
-        presence_key = f"presence:{community_id}:{user.id}"
-        redis_client.setex(presence_key, 60, "active")
-
-        # 2. COUNT: Who else is here?
         pattern = f"presence:{community_id}:*"
-        online_keys = redis_client.keys(pattern)
         
-        # (Optional) Debugging: Print keys to console to see if they exist
-        # print(f"Checking pattern: {pattern}")
-        # print(f"Found keys: {online_keys}")
-
+        # Use scan_iter for a more robust search across the keyspace
+        online_count = 0
+        for _ in redis_client.scan_iter(match=pattern):
+            online_count += 1
+            
         return Response({
             "community_id": community_id,
-            "online_count": len(online_keys)
+            "online_count": online_count
         })
