@@ -259,19 +259,30 @@ class CommunityScoreView(APIView):
             return Response({"score": 0})
 
 
+redis_client = redis.StrictRedis.from_url(settings.REDIS_URL, decode_responses=True)
+
 class CommunityOnlineCountView(APIView):
     """
-    Returns the number of users who have requested a feed in the last 60 seconds.
+    Returns the number of users online AND keeps the current user's session alive.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, community_id):
-        # Redis pattern to find all active users in this specific community
+        user = request.user
+
+        # 1. HEARTBEAT: I am here! Extend my life for another 60 seconds.
+        # This fixes the issue where users "disappear" after 1 minute.
+        presence_key = f"presence:{community_id}:{user.id}"
+        redis_client.setex(presence_key, 60, "active")
+
+        # 2. COUNT: Who else is here?
         pattern = f"presence:{community_id}:*"
-        
-        # This returns a list of keys currently in Redis matching the pattern
         online_keys = redis_client.keys(pattern)
         
+        # (Optional) Debugging: Print keys to console to see if they exist
+        # print(f"Checking pattern: {pattern}")
+        # print(f"Found keys: {online_keys}")
+
         return Response({
             "community_id": community_id,
             "online_count": len(online_keys)
